@@ -70,9 +70,9 @@ python .\models\train_XGBoost.py
 
 AIHub VL/VS hold-out validation results:
 
-- Accuracy: **86.36%**
-- Macro F1-score: **68.82%**
-- Weighted F1-score: **86.20%**
+* Accuracy: **86.36%**
+* Macro F1-score: **68.82%**
+* Weighted F1-score: **86.20%**
 
 Because N1 accounts for a large proportion of the data, Macro F1-score is evaluated alongside Accuracy rather than relying on Accuracy alone. These results represent validation performance; final generalization performance should be further evaluated using exhibition-camera footage or separate field-test videos.
 
@@ -157,14 +157,6 @@ at `960x540`, JPEG Q85, 30 FPS (Silent Signal/Rear Approach), and AUDIO at
 FPS produced `partial` results, those rates are not approved for final analysis
 operation. Actual Raspberry Pi throughput for 210 frames in seven seconds and
 Spring Boot authentication/network integration remain to be verified.
-
-For integration details, see the following documents.
-
-- [Pi and Spring Boot integration guide](experiments/streaming_poc/streaming_api_poc/PI_SPRING_BOOT_READINESS.md)
-- [Batch Frames API specification](experiments/streaming_poc/streaming_api_poc/BATCH_API_SPEC.md)
-- [Streaming JSON DTO/HTTP specification](experiment_results/streaming_poc/streaming_api_poc/SPRING_BOOT_JSON_SPEC.md)
-- [Phase C FPS validation](experiment_results/streaming_poc/streaming_api_poc/phase_c/PHASE_C_REPORT.md)
-- [Phase D localhost integration validation](experiment_results/streaming_poc/streaming_api_poc/phase_d/PHASE_D_REPORT.md)
 
 ## Git Management
 
