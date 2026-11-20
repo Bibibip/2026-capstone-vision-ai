@@ -1,46 +1,46 @@
 ﻿# Entrance Behavior Vision Pipeline
 
-현관 카메라 영상에서 정상 활동과 이상행동을 블록 단위로 분류하는 Vision 파이프라인입니다.
+A Vision pipeline that classifies normal activities and anomalous behaviors in entrance camera footage on a block-by-block basis.
 
-## 분류 라벨
+## Classification Labels
 
-| 라벨 | 의미 |
+| Label | Meaning |
 |---|---|
-| N1 | 정상 현관 활동: 거주자 출입, 일반 배달, 대기, 이탈 |
-| A17 | 초인종 반복 누름 |
-| A18 | 문 열기 반복 시도 |
-| A19 | 문 반복 발차기 |
-| A20 | 문 안쪽을 들여다보기 시도 |
-| A21 | 장시간 또는 반복 문 두드림 |
+| N1 | Normal entrance activity: resident entry/exit, regular delivery, waiting, or leaving |
+| A17 | Repeatedly pressing the doorbell |
+| A18 | Repeated attempts to open the door |
+| A19 | Repeatedly kicking the door |
+| A20 | Attempting to look inside the door |
+| A21 | Prolonged or repeated knocking on the door |
 
-## 데이터 분할
+## Data Split
 
-| 구분 | 사용 데이터 |
+| Split | Data Used |
 |---|---|
-| Train | AIHub TL/TS, mydata, train 원본에서 파생된 augmentation |
-| Validation | AIHub VL/VS 원본 영상만 사용 |
-| Test | 별도 전시 카메라 또는 보류 현장 영상으로 추후 구성 |
+| Train | AIHub TL/TS, mydata, and augmented data derived from the original training data |
+| Validation | Original AIHub VL/VS videos only |
+| Test | Separate exhibition-camera footage or held-out field footage, to be constructed later |
 
-mydata의 `normal`, `delivery`는 N1으로 사용하고, `lookingInside`는 A20으로 사용합니다.
+`normal` and `delivery` from mydata are used as N1, while `lookingInside` is used as A20.
 
-## 처리 흐름
+## Processing Pipeline
 
 ```text
-영상
-→ YOLO 사람 탐지 + BoT-SORT tracking
-→ MediaPipe Pose 추출
-→ annotation 블록별 행동·pose 특징 집계
-→ XGBoost 분류
-→ N1 / A17~A21 예측 결과
+Video
+→ YOLO person detection + BoT-SORT tracking
+→ MediaPipe Pose extraction
+→ Aggregation of behavior and pose features by annotation block
+→ XGBoost classification
+→ N1 / A17–A21 predictions
 ```
 
-- tracking과 pose는 영상당 한 번만 실행합니다.
-- 특징과 학습은 annotation의 `start_frame`, `end_frame` 블록 범위를 사용합니다.
-- train의 augmentation은 원본 블록 경계를 그대로 사용합니다.
+- Tracking and pose extraction run only once per video.
+- Feature extraction and training use the `start_frame` and `end_frame` ranges of each annotation block.
+- Augmented training data uses the original block boundaries.
 
-## 실행 순서
+## Execution Order
 
-가상환경을 활성화한 뒤 프로젝트 루트에서 실행합니다.
+Activate the virtual environment and run the following commands from the project root.
 
 ```powershell
 python .\utils\load_annotation.py
@@ -52,116 +52,120 @@ python .\tracking\merge_features.py
 python .\models\train_XGBoost.py
 ```
 
-`tracker.py`와 `pose_extractor.py`는 영상별 CSV가 이미 있으면 건너뛰므로, 중단 후 재실행할 수 있습니다.
+`tracker.py` and `pose_extractor.py` skip processing when per-video CSV files already exist, allowing the pipeline to be safely re-run after interruption.
 
-## 생성 결과
+## Generated Outputs
 
-| 경로 | 내용 |
+| Path | Contents |
 |---|---|
-| `splits/annotations/train_annotations.csv` | TL/TS 기반 AIHub train 블록 manifest |
-| `splits/annotations/valid_annotations.csv` | VL/VS 기반 validation 블록 manifest |
-| `splits/annotations/train_annotations_all.csv` | AIHub + mydata + augmentation train manifest |
-| `results/tracking/` | 영상별 사람 tracking 결과 |
-| `results/pose/` | 영상별 pose 프레임 특징 |
-| `results/features/` | 블록별 behavior·pose 병합 특징 |
-| `results/models/xgboost_validation/` | validation report, confusion matrix, 모델 파일 |
+| `splits/annotations/train_annotations.csv` | AIHub training-block manifest based on TL/TS |
+| `splits/annotations/valid_annotations.csv` | Validation-block manifest based on VL/VS |
+| `splits/annotations/train_annotations_all.csv` | Combined training manifest including AIHub, mydata, and augmentations |
+| `results/tracking/` | Per-video person-tracking results |
+| `results/pose/` | Per-video frame-level pose features |
+| `results/features/` | Merged block-level behavior and pose features |
+| `results/models/xgboost_validation/` | Validation report, confusion matrix, and model files |
 
-## 현재 baseline 결과
+## Current Baseline Results
 
-AIHub VL/VS hold-out validation 기준:
+AIHub VL/VS hold-out validation results:
 
 - Accuracy: **86.36%**
 - Macro F1-score: **68.82%**
 - Weighted F1-score: **86.20%**
 
-N1 비중이 높으므로 Accuracy만이 아니라 Macro F1-score를 함께 평가합니다. 이 결과는 validation 성능이며, 최종 일반화 성능은 전시 카메라 또는 별도 현장 test 영상으로 추가 검증해야 합니다.
+Because N1 accounts for a large proportion of the data, Macro F1-score is evaluated alongside Accuracy rather than relying on Accuracy alone. These results represent validation performance; final generalization performance should be further evaluated using exhibition-camera footage or separate field-test videos.
 
-## 전시 Vision FastAPI
+## Exhibition Vision FastAPI
 
-`POST /analyze/vision`은 `multipart/form-data`로 MP4와 트리거 메타데이터를 받습니다. Vision은 관찰 이벤트 또는 기존 행동 분류 결과만 반환하며, LOW/MEDIUM/HIGH 위험도 결정은 Agent의 역할입니다.
+`POST /analyze/vision` accepts an MP4 file and trigger metadata as `multipart/form-data`. Vision returns observation events or existing behavior-classification results only; LOW/MEDIUM/HIGH risk decisions are the responsibility of the Agent.
 
-| `triggerType` | 기본 처리 |
+| `triggerType` | Default processing |
 |---|---|
-| `AUDIO` | `exhibition_rules`: 사람 누적 관찰 및 카메라 가림 규칙 |
-| `KEYPAD` | 기존 `SILENT_SIGNAL`, `REAR_CLOSE_APPROACH_SUSPECTED` 규칙 |
+| `AUDIO` | `exhibition_rules`: accumulated person-observation and camera-occlusion rules |
+| `KEYPAD` | Existing `SILENT_SIGNAL` and `REAR_CLOSE_APPROACH_SUSPECTED` rules |
 
-`VISION_AUDIO_MODE`는 AUDIO 경로에만 적용됩니다. 미설정 또는 `exhibition_rules`면 전시 규칙을 실행하고, `temporal_trial6`을 명시하면 보존된 Temporal Trial 6 행동 분류 모델을 실행합니다. KEYPAD 경로는 이 설정과 무관하게 기존 규칙을 유지합니다.
+`VISION_AUDIO_MODE` applies only to the AUDIO path. When unset or set to `exhibition_rules`, it uses the exhibition rules; setting it to `temporal_trial6` runs the preserved Temporal Trial 6 behavior-classification model. The KEYPAD path retains its existing rules regardless of this setting.
 
 ```powershell
-# 전시 기본 모드 (VISION_AUDIO_MODE 미설정과 동일)
+# Default exhibition mode (the same behavior as an unset VISION_AUDIO_MODE)
 $env:VISION_AUDIO_MODE = "exhibition_rules"
 .\.venv\Scripts\python.exe .\api\vision_api.py
 
-# 기존 Trial 6 백업 모드
+# Legacy Trial 6 fallback mode
 $env:VISION_AUDIO_MODE = "temporal_trial6"
 $env:VISION_MODEL = "temporal_trial6"
 .\.venv\Scripts\python.exe .\api\vision_api.py
 ```
 
-전시 규칙 AUDIO 응답은 `behavior: null`이며, `visionEvents`에 다음 관찰 이벤트를 반환합니다.
+In exhibition-rules mode, AUDIO responses set `behavior` to `null` and return the following observation events in `visionEvents`.
 
-| 이벤트 | 판정 개요 |
+| Event | Detection summary |
 |---|---|
-| `PERSON_DWELL_OBSERVED` | 같은 BoT-SORT Track ID가 누적 5초 이상 관찰됨 |
-| `CAMERA_OCCLUSION_SUSPECTED` | 첫 10초 안에서 저 edge density·저 Laplacian 상태가 0.3초 이상 지속됨 |
+| `PERSON_DWELL_OBSERVED` | The same BoT-SORT track ID is observed for a cumulative five seconds or longer |
+| `CAMERA_OCCLUSION_SUSPECTED` | Low edge density and low Laplacian variance persist for at least 0.3 seconds during the first 10 seconds |
 
-이 모드의 `observations`에는 선택 필드 `analysisMode: "exhibition_rules"`가 포함됩니다. `temporal_trial6`과 KEYPAD 기존 응답에는 이 필드를 추가하지 않습니다. 상세 API 요청·응답 계약은 `api/vision_api.py` 구현을 기준으로 관리합니다.
+The `observations` object in this mode includes the optional field `analysisMode: "exhibition_rules"`. This field is not added to `temporal_trial6` or existing KEYPAD responses. The `api/vision_api.py` implementation is the source of truth for the detailed API request and response contract.
 
 ## Streaming Vision API
 
-기존 MP4 API(포트 8000)는 fallback 경로로 유지합니다. 최종 Streaming API(포트
-8010)는 한 번의 7초 카메라 촬영에서 Raspberry Pi가 JPEG를 Vision으로 직접
-전송하고, MP4 녹화는 Spring Boot/S3 보관 경로로 병렬 처리합니다.
+The existing MP4 API (port 8000) remains available as a fallback. The Streaming
+API (port 8010) sends JPEG frames from a single seven-second Raspberry Pi
+capture directly to Vision while MP4 recording proceeds in parallel through
+the Spring Boot/S3 storage path.
 
 ```text
 Raspberry Pi single capture
   ├─ JPEG → Streaming Vision :8010 → EARLY_EVENT callback / FINAL_RESULT polling
   └─ MP4 → Spring Boot → S3
 
-Streaming 실패·partial 결과 → 기존 MP4 /analyze/vision fallback
+Streaming failure or partial result → existing MP4 `/analyze/vision` fallback
 ```
 
 ```powershell
-# 기존 MP4 Vision API (fallback)
+# Existing MP4 Vision API (fallback)
 $env:VISION_AUDIO_MODE = "exhibition_rules"
 $env:SILENT_SIGNAL_COORDINATE_MODE = "front"
 $env:REAR_APPROACH_CAMERA_MODE = "front"
 .\.venv\Scripts\python.exe -m uvicorn api.vision_api:app --host 0.0.0.0 --port 8000
 
-# Streaming Vision API (같은 머신에서 fallback API와 병행 가능)
+# Streaming Vision API (can run alongside the fallback API on the same machine)
 .\.venv\Scripts\python.exe -m uvicorn experiments.streaming_poc.streaming_api_poc.app:app --host 0.0.0.0 --port 8010
 
-# 또는 프로젝트 루트에서 운영 환경변수를 포함한 시작 스크립트 실행
+# Or run the startup script with its operational environment variables from the project root
 .\start-vision.ps1
 ```
 
-Streaming endpoint는 `POST /vision/start`, `POST /vision/frames`(권장, 최대 5장의
-JPEG 원자적 배치 업로드), 기존 호환용 `POST /vision/frame`,
-`POST /vision/complete`, `GET /vision/status/{sessionId}`,
-`GET /vision/result/{sessionId}`입니다. Pi는 `sessionId`와 기존 `triggerId`를
-연결하고, Silent Signal은 촬영 중 `EARLY_EVENT` callback으로 별도 기록합니다.
-최종 결과는 Spring Boot가 polling 후 같은 `triggerId`에 대해 한 번만 Agent
-판단에 사용합니다.
+The Streaming API exposes `POST /vision/start`, `POST /vision/frames` (recommended;
+atomic batch upload of up to five JPEG frames), the compatibility endpoint
+`POST /vision/frame`, `POST /vision/complete`, `GET /vision/status/{sessionId}`,
+and `GET /vision/result/{sessionId}`. The Pi associates a `sessionId` with the
+existing `triggerId`; Silent Signal is recorded separately through an
+`EARLY_EVENT` callback during capture. Spring Boot polls the final result and
+uses it exactly once for Agent reasoning for the same `triggerId`.
 
-배치 요청은 SHA-256으로 JPEG 바이트를 검증하고, 같은 `batchId`·메타데이터·바이트의
-재전송을 안전하게 중복 처리합니다. Pi는 성공 응답 전까지 원본 JPEG를 디스크 spool에
-유지해야 하며, 순서 충돌(409) 또는 큐 포화(429) 시 같은 배치를 재시도합니다. 상세
-multipart 계약과 실패 처리 규칙은 [Batch Frames API 명세](experiments/streaming_poc/streaming_api_poc/BATCH_API_SPEC.md)를 따릅니다.
+Batch requests validate JPEG bytes with SHA-256 and safely handle retransmission
+of the same `batchId`, metadata, and bytes as a duplicate. The Pi must retain
+the original JPEGs in a disk spool until it receives a success response, and
+must retry the same batch after an ordering conflict (409) or queue saturation
+(429). See the [Batch Frames API specification](experiments/streaming_poc/streaming_api_poc/BATCH_API_SPEC.md)
+for the complete multipart contract and failure-handling rules.
 
-현재 7초 localhost 대표 검증 설정은 KEYPAD `960x540` JPEG Q85 30 FPS
-(Silent Signal/Rear Approach), AUDIO `1920x1080` JPEG Q85 30 FPS
-(Camera Occlusion/Person Dwell)입니다. 15/20 FPS는 `partial` 결과이므로
-최종 분석 운영 설정으로 확정되지 않았습니다. 실제 Raspberry Pi의 210프레임/7초
-전송 성능, Spring Boot 인증·네트워크 연동은 아직 검증 전입니다.
+The representative seven-second localhost validation configuration is KEYPAD
+at `960x540`, JPEG Q85, 30 FPS (Silent Signal/Rear Approach), and AUDIO at
+`1920x1080`, JPEG Q85, 30 FPS (Camera Occlusion/Person Dwell). Because 15/20
+FPS produced `partial` results, those rates are not approved for final analysis
+operation. Actual Raspberry Pi throughput for 210 frames in seven seconds and
+Spring Boot authentication/network integration remain to be verified.
 
-연동 상세는 다음 문서를 참조합니다.
+For integration details, see the following documents.
 
-- [Pi 및 Spring Boot 연동 가이드](experiments/streaming_poc/streaming_api_poc/PI_SPRING_BOOT_READINESS.md)
-- [Batch Frames API 명세](experiments/streaming_poc/streaming_api_poc/BATCH_API_SPEC.md)
-- [Streaming JSON DTO/HTTP 명세](experiment_results/streaming_poc/streaming_api_poc/SPRING_BOOT_JSON_SPEC.md)
-- [Phase C FPS 검증](experiment_results/streaming_poc/streaming_api_poc/phase_c/PHASE_C_REPORT.md)
-- [Phase D localhost 통합 검증](experiment_results/streaming_poc/streaming_api_poc/phase_d/PHASE_D_REPORT.md)
+- [Pi and Spring Boot integration guide](experiments/streaming_poc/streaming_api_poc/PI_SPRING_BOOT_READINESS.md)
+- [Batch Frames API specification](experiments/streaming_poc/streaming_api_poc/BATCH_API_SPEC.md)
+- [Streaming JSON DTO/HTTP specification](experiment_results/streaming_poc/streaming_api_poc/SPRING_BOOT_JSON_SPEC.md)
+- [Phase C FPS validation](experiment_results/streaming_poc/streaming_api_poc/phase_c/PHASE_C_REPORT.md)
+- [Phase D localhost integration validation](experiment_results/streaming_poc/streaming_api_poc/phase_d/PHASE_D_REPORT.md)
 
-## Git 관리
+## Git Management
 
-원본·증강 영상, 실행 결과, 자동 생성 manifest, 모델 가중치는 `.gitignore`로 제외합니다. 코드와 재현에 필요한 설정 파일만 Git으로 관리합니다.
+Source and augmented videos, run results, generated manifests, and model weights are excluded through `.gitignore`. Git tracks only source code and the configuration files needed for reproducibility.
