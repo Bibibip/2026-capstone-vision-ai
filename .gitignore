@@ -41,3 +41,10 @@ field_test/
 # final_demo 원본과 실행·검증 산출물 (소스 모듈은 추적)
 final_demo/videos/
 final_demo/results_front_rules/
+
+# 로컬 API 실행 로그·임시 분석 산출물
+runtime_logs/
+experiment_results/**/server*.log
+experiment_results/**/fps_server_*.log
+evaluation/**/server_*.log
+test/**/output/

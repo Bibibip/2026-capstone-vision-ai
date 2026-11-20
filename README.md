@@ -107,12 +107,11 @@ $env:VISION_MODEL = "temporal_trial6"
 
 이 모드의 `observations`에는 선택 필드 `analysisMode: "exhibition_rules"`가 포함됩니다. `temporal_trial6`과 KEYPAD 기존 응답에는 이 필드를 추가하지 않습니다. 상세 API 요청·응답 계약은 `api/vision_api.py` 구현을 기준으로 관리합니다.
 
-## Streaming Vision API (독립 PoC)
+## Streaming Vision API
 
-기존 MP4 API(포트 8000)는 fallback 경로로 그대로 유지합니다. 별도의
-Streaming API(포트 8010)는 한 번의 7초 카메라 촬영에서 Raspberry Pi가 JPEG를
-Vision으로 직접 전송하고, MP4 녹화는 Spring Boot/S3 보관 경로로 병렬 처리하는
-구조를 검증한 PoC입니다.
+기존 MP4 API(포트 8000)는 fallback 경로로 유지합니다. 최종 Streaming API(포트
+8010)는 한 번의 7초 카메라 촬영에서 Raspberry Pi가 JPEG를 Vision으로 직접
+전송하고, MP4 녹화는 Spring Boot/S3 보관 경로로 병렬 처리합니다.
 
 ```text
 Raspberry Pi single capture
@@ -129,16 +128,25 @@ $env:SILENT_SIGNAL_COORDINATE_MODE = "front"
 $env:REAR_APPROACH_CAMERA_MODE = "front"
 .\.venv\Scripts\python.exe -m uvicorn api.vision_api:app --host 0.0.0.0 --port 8000
 
-# 독립 Streaming API (같은 머신에서 병행 가능)
+# Streaming Vision API (같은 머신에서 fallback API와 병행 가능)
 .\.venv\Scripts\python.exe -m uvicorn experiments.streaming_poc.streaming_api_poc.app:app --host 0.0.0.0 --port 8010
+
+# 또는 프로젝트 루트에서 운영 환경변수를 포함한 시작 스크립트 실행
+.\start-vision.ps1
 ```
 
-Streaming endpoint는 `POST /vision/start`, 반복 `POST /vision/frame`
-(`multipart/form-data` JPEG), `POST /vision/complete`,
-`GET /vision/status/{sessionId}`, `GET /vision/result/{sessionId}`입니다.
-Pi가 `sessionId`와 기존 `triggerId`를 연결하고, Silent Signal은 촬영 중
-`EARLY_EVENT` callback으로 별도 기록됩니다. 최종 결과는 Spring Boot가 polling
-후 같은 `triggerId`에 대해 한 번만 Agent 판단에 사용합니다.
+Streaming endpoint는 `POST /vision/start`, `POST /vision/frames`(권장, 최대 5장의
+JPEG 원자적 배치 업로드), 기존 호환용 `POST /vision/frame`,
+`POST /vision/complete`, `GET /vision/status/{sessionId}`,
+`GET /vision/result/{sessionId}`입니다. Pi는 `sessionId`와 기존 `triggerId`를
+연결하고, Silent Signal은 촬영 중 `EARLY_EVENT` callback으로 별도 기록합니다.
+최종 결과는 Spring Boot가 polling 후 같은 `triggerId`에 대해 한 번만 Agent
+판단에 사용합니다.
+
+배치 요청은 SHA-256으로 JPEG 바이트를 검증하고, 같은 `batchId`·메타데이터·바이트의
+재전송을 안전하게 중복 처리합니다. Pi는 성공 응답 전까지 원본 JPEG를 디스크 spool에
+유지해야 하며, 순서 충돌(409) 또는 큐 포화(429) 시 같은 배치를 재시도합니다. 상세
+multipart 계약과 실패 처리 규칙은 [Batch Frames API 명세](experiments/streaming_poc/streaming_api_poc/BATCH_API_SPEC.md)를 따릅니다.
 
 현재 7초 localhost 대표 검증 설정은 KEYPAD `960x540` JPEG Q85 30 FPS
 (Silent Signal/Rear Approach), AUDIO `1920x1080` JPEG Q85 30 FPS
@@ -149,6 +157,7 @@ Pi가 `sessionId`와 기존 `triggerId`를 연결하고, Silent Signal은 촬영
 연동 상세는 다음 문서를 참조합니다.
 
 - [Pi 및 Spring Boot 연동 가이드](experiments/streaming_poc/streaming_api_poc/PI_SPRING_BOOT_READINESS.md)
+- [Batch Frames API 명세](experiments/streaming_poc/streaming_api_poc/BATCH_API_SPEC.md)
 - [Streaming JSON DTO/HTTP 명세](experiment_results/streaming_poc/streaming_api_poc/SPRING_BOOT_JSON_SPEC.md)
 - [Phase C FPS 검증](experiment_results/streaming_poc/streaming_api_poc/phase_c/PHASE_C_REPORT.md)
 - [Phase D localhost 통합 검증](experiment_results/streaming_poc/streaming_api_poc/phase_d/PHASE_D_REPORT.md)
